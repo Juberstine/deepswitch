@@ -85,18 +85,36 @@ Keep the installed executable at a stable path. If it moves, run
 ## Windows and WSL
 
 Install and run the switcher in the same environment where the Codex process
-runs. Windows and WSL are separate installations:
+runs. Windows and WSL use different executables and credential stores:
 
 - Native Windows uses the `.exe`, `%USERPROFILE%\.codex`, and Windows
-  Credential Manager. Use this for Codex desktop and for Codex CLI launched
-  from Windows.
+  Credential Manager. Use this for Codex desktop with its native Windows agent
+  and for Codex CLI launched from Windows.
 - WSL uses the Linux binary, the distro's `~/.codex`, and Linux Secret Service
   over the WSL session D-Bus. Use this for Codex CLI launched inside WSL.
 
-Codex desktop is a native application and does not run inside WSL. A Windows
-Codex process cannot execute the Linux credential-helper path, and a WSL Codex
-CLI cannot use Windows Credential Manager through the Linux keyring API. Run
-`setup` separately in Windows and WSL if you use both.
+The Windows desktop app can also run its Codex agent inside WSL. The app
+normally keeps its Codex home under `%USERPROFILE%\.codex`, while the helper
+and credential store must match the WSL agent. When the app's WSL agent is
+installed, the normal WSL `setup`, `codex`, `deepseek`, and `status` commands
+automatically manage both the WSL CLI and Windows app configurations. Status
+shows each Codex home separately.
+
+The switcher asks Windows for the current user profile, converts it to the
+active WSL mount path, and detects the app's WSL agent. It writes a Linux helper
+path and WSL-readable model catalog path into the app configuration. Keep the
+Linux executable at a stable location and ensure the app-launched WSL session
+can reach the same Secret Service session D-Bus as your WSL shell.
+
+An explicit `CODEX_HOME` continues to manage only that directory. Do not
+globally point the WSL CLI's `CODEX_HOME` at the Windows app directory: sharing
+Windows- and Linux-created SQLite state can cause migration checksum conflicts.
+
+A native Windows Codex process cannot execute the Linux credential helper, and
+a WSL Codex process cannot read Windows Credential Manager through the Linux
+keyring API. If you change the desktop app between native Windows and WSL agent
+modes, rerun setup using the matching Windows or WSL switcher. The normal WSL
+commands manage the app whenever its WSL agent installation is present.
 
 `deepswitch status` prints the detected runtime, Codex home, and credential
 backend. WSL requires a Secret Service provider such as GNOME Keyring or

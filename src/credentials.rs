@@ -76,14 +76,25 @@ pub fn runtime_name() -> &'static str {
 
     #[cfg(target_os = "linux")]
     {
-        let distro_name_present = std::env::var_os("WSL_DISTRO_NAME").is_some();
-        let os_release = std::fs::read_to_string("/proc/sys/kernel/osrelease").ok();
-        let is_wsl = detect_wsl(distro_name_present, os_release.as_deref());
-        return if is_wsl { "WSL" } else { "Linux" };
+        return if is_wsl_runtime() { "WSL" } else { "Linux" };
     }
 
     #[allow(unreachable_code)]
     "unknown"
+}
+
+pub fn is_wsl_runtime() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let distro_name_present = std::env::var_os("WSL_DISTRO_NAME").is_some();
+        let os_release = std::fs::read_to_string("/proc/sys/kernel/osrelease").ok();
+        detect_wsl(distro_name_present, os_release.as_deref())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
 }
 
 #[cfg(target_os = "linux")]
