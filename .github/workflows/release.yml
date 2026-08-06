@@ -222,8 +222,10 @@ jobs:
 
           version="$(awk '/^  version / { gsub(/"/, "", $2); print $2 }' \
             Formula/deepswitch.rb)"
+          branch="bots/update-deepswitch-${version}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
           git add Formula/deepswitch.rb
           git commit -m "Update deepswitch to $version"
-          git push origin main
+          git push -u origin "$branch"
