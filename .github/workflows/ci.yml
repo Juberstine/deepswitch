@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-tests:
+    name: Docker checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build development image
+        run: docker build --file Dockerfile.dev --tag codex-deepseek-switcher-dev .
+      - name: Format, lint, and test
+        run: docker run --rm codex-deepseek-switcher-dev
+
+  native-build:
+    name: Native build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - name: Check native credential-store backend
+        run: cargo check --locked --all-targets
