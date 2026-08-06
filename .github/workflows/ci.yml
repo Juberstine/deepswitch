@@ -54,6 +54,30 @@ jobs:
       - name: Format, lint, and test
         run: docker run --rm codex-deepseek-switcher-dev
 
+  homebrew-formula:
+    name: Homebrew formula
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Render and lint formula
+        shell: bash
+        run: |
+          mkdir -p dist
+          for asset in \
+            codex-deepseek-switcher-linux-aarch64.tar.gz \
+            codex-deepseek-switcher-linux-x86_64.tar.gz \
+            codex-deepseek-switcher-macos-aarch64.tar.gz \
+            codex-deepseek-switcher-macos-x86_64.tar.gz
+          do
+            printf '%064d  ./%s\n' 0 "$asset"
+          done > dist/SHA256SUMS
+          python3 scripts/render-homebrew-formula.py \
+            --version 0.0.0 \
+            --checksums dist/SHA256SUMS \
+            --output dist/codex-deepseek-switcher.rb
+          ruby -c dist/codex-deepseek-switcher.rb
+          brew style dist/codex-deepseek-switcher.rb
+
   native-build:
     name: Native build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

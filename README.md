@@ -26,7 +26,17 @@ unavailable.
 
 ## Install
 
-Download the archive for your platform from
+On macOS or Linux, install from the
+[Homebrew tap](https://github.com/Juberstine/homebrew-tap):
+
+```sh
+brew install Juberstine/tap/codex-deepseek-switcher
+```
+
+Future releases are available through `brew update` and
+`brew upgrade codex-deepseek-switcher`.
+
+On any supported platform, you can instead download the archive from
 [GitHub Releases](https://github.com/Juberstine/codex-deepseek-switcher/releases),
 extract it, and place `codex-deepseek-switcher` (or
 `codex-deepseek-switcher.exe`) on your `PATH`. Each release includes:
@@ -180,6 +190,10 @@ merges to `main`, the release workflow:
 2. verifies that both Linux binaries are statically linked
 3. generates SHA-256 checksums and public-repository provenance attestations
 4. creates the matching `v<version>` tag and GitHub release
+5. updates the macOS and Linux formula in `Juberstine/homebrew-tap`
+
+The tap update uses the repository secret `HOMEBREW_TAP_DEPLOY_KEY`, paired
+with a write-enabled deploy key scoped only to the tap repository.
 
 The merge fails visibly at the release stage if its Cargo version was already
 published. Manual workflow runs never create tags or releases.

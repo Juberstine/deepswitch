@@ -142,9 +142,22 @@ jobs:
             exit 1
           fi
           echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "version=$package_version" >> "$GITHUB_OUTPUT"
       - name: Generate checksums
         working-directory: dist
         run: sha256sum ./*.tar.gz > SHA256SUMS
+      - name: Render Homebrew formula
+        run: >-
+          python3 scripts/render-homebrew-formula.py
+          --version "${{ steps.version.outputs.version }}"
+          --checksums dist/SHA256SUMS
+          --output dist/codex-deepseek-switcher.rb
+      - uses: actions/upload-artifact@v7
+        with:
+          name: homebrew-formula
+          path: dist/codex-deepseek-switcher.rb
+          if-no-files-found: error
+          retention-days: 14
       - name: Attest checksum manifest
         if: github.event.repository.visibility == 'public'
         uses: actions/attest@v4
@@ -160,3 +173,56 @@ jobs:
           --generate-notes
           dist/*.tar.gz
           dist/SHA256SUMS
+
+  update-homebrew:
+    name: Update Homebrew tap
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: homebrew-formula
+          path: dist
+      - name: Publish formula
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          if [[ -z "$DEPLOY_KEY" ]]; then
+            echo "HOMEBREW_TAP_DEPLOY_KEY is not configured" >&2
+            exit 1
+          fi
+
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/homebrew_tap"
+          chmod 600 "$HOME/.ssh/homebrew_tap"
+          unset DEPLOY_KEY
+          trap 'rm -f "$HOME/.ssh/homebrew_tap"' EXIT
+          printf '%s\n' \
+            'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+            > "$HOME/.ssh/known_hosts"
+
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/homebrew_tap -o IdentitiesOnly=yes"
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
+          git clone --depth 1 git@github.com:Juberstine/homebrew-tap.git "$tap_dir"
+          install -d "$tap_dir/Formula"
+          install -m 644 \
+            dist/codex-deepseek-switcher.rb \
+            "$tap_dir/Formula/codex-deepseek-switcher.rb"
+
+          cd "$tap_dir"
+          if [[ -z "$(git status --porcelain -- Formula/codex-deepseek-switcher.rb)" ]]; then
+            echo "Homebrew formula is already current."
+            exit 0
+          fi
+
+          version="$(awk '/^  version / { gsub(/"/, "", $2); print $2 }' \
+            Formula/codex-deepseek-switcher.rb)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/codex-deepseek-switcher.rb
+          git commit -m "Update codex-deepseek-switcher to $version"
+          git push origin main
