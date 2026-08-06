@@ -20,13 +20,23 @@ const DEEPSEEK_PROVIDER: &str = "deepseek";
 const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/";
 const STATE_VERSION: u8 = 1;
 const MODEL_CATALOG: &str = include_str!("../assets/deepseek-models.json");
-const MANAGED_SELECTION_FIELDS: [&str; 6] = [
+const MANAGED_SELECTION_FIELDS: [&str; 4] = [
+    "model",
+    "model_provider",
+    "model_reasoning_effort",
+    "model_catalog_json",
+];
+const SAVED_SELECTION_FIELDS: [&str; 6] = [
     "model",
     "model_provider",
     "preferred_auth_method",
     "forced_login_method",
     "model_reasoning_effort",
     "model_catalog_json",
+];
+const LEGACY_AUTH_OVERRIDES: [(&str, &str); 2] = [
+    ("preferred_auth_method", "apikey"),
+    ("forced_login_method", "api"),
 ];
 
 #[derive(Debug, Clone)]
@@ -94,18 +104,16 @@ pub fn switch_to_deepseek(paths: &CodexPaths, helper: &Path) -> Result<ChangeRep
     validate_embedded_catalog()?;
     let mut document = read_config(paths)?;
     ensure_original_state(paths, &document)?;
+    restore_legacy_auth_overrides(&mut document, &read_state(paths)?, &paths.state)?;
 
     set_string(&mut document, "model", DEEPSEEK_MODEL);
     set_string(&mut document, "model_provider", DEEPSEEK_PROVIDER);
-    set_string(&mut document, "preferred_auth_method", "apikey");
-    set_string(&mut document, "forced_login_method", "api");
     set_string(&mut document, "model_reasoning_effort", "high");
     set_string(
         &mut document,
         "model_catalog_json",
         &paths.models.to_string_lossy(),
     );
-    set_string(&mut document, "cli_auth_credentials_store", "keyring");
     install_provider(&mut document, helper)?;
 
     let config_contents = document.to_string();
@@ -137,6 +145,7 @@ pub fn switch_to_deepseek(paths: &CodexPaths, helper: &Path) -> Result<ChangeRep
 pub fn switch_to_codex(paths: &CodexPaths) -> Result<ChangeReport> {
     let state = read_state(paths)?;
     let mut document = read_config(paths)?;
+    restore_legacy_auth_overrides(&mut document, &state, &paths.state)?;
 
     for field in MANAGED_SELECTION_FIELDS {
         match state.selection.get(field) {
@@ -153,8 +162,6 @@ pub fn switch_to_codex(paths: &CodexPaths) -> Result<ChangeReport> {
             }
         }
     }
-    set_string(&mut document, "cli_auth_credentials_store", "keyring");
-
     let contents = document.to_string();
     if !file_differs(&paths.config, contents.as_bytes())? {
         return Ok(ChangeReport {
@@ -199,7 +206,7 @@ fn ensure_original_state(paths: &CodexPaths, document: &DocumentMut) -> Result<(
     }
 
     let mut selection = BTreeMap::new();
-    for field in MANAGED_SELECTION_FIELDS {
+    for field in SAVED_SELECTION_FIELDS {
         selection.insert(field.to_owned(), get_optional_item(document, field)?);
     }
     let state = SavedState {
@@ -307,6 +314,29 @@ fn get_optional_item(document: &DocumentMut, key: &str) -> Result<Option<String>
         return Err(AppError::UnsupportedSetting(key.to_owned()));
     }
     Ok(Some(item.to_string()))
+}
+
+fn restore_legacy_auth_overrides(
+    document: &mut DocumentMut,
+    state: &SavedState,
+    state_path: &Path,
+) -> Result<()> {
+    for (field, legacy_value) in LEGACY_AUTH_OVERRIDES {
+        if get_optional_string(document, field)?.as_deref() != Some(legacy_value) {
+            continue;
+        }
+
+        match state.selection.get(field) {
+            Some(Some(original)) => {
+                restore_item(document, field, original, state_path)?;
+            }
+            Some(None) => {
+                document.remove(field);
+            }
+            None => {}
+        }
+    }
+    Ok(())
 }
 
 fn restore_item(
@@ -561,6 +591,99 @@ command = "example"
         );
         assert!(switch_to_codex(&paths).expect("first restore").changed);
         assert!(!switch_to_codex(&paths).expect("second restore").changed);
+    }
+
+    #[test]
+    fn switching_does_not_change_chatgpt_login_configuration() {
+        let (_directory, paths) = fixture();
+        write_config(
+            &paths,
+            r#"model = "gpt-5.4"
+forced_login_method = "chatgpt"
+cli_auth_credentials_store = "file"
+"#,
+        );
+
+        switch_to_deepseek(&paths, Path::new("/bin/switcher")).expect("switch deepseek");
+        let deepseek = read_config(&paths).expect("deepseek config");
+        assert_eq!(
+            get_optional_string(&deepseek, "forced_login_method").expect("login method"),
+            Some("chatgpt".to_owned())
+        );
+        assert_eq!(
+            get_optional_string(&deepseek, "cli_auth_credentials_store").expect("credential store"),
+            Some("file".to_owned())
+        );
+        assert_eq!(
+            get_optional_string(&deepseek, "preferred_auth_method").expect("preferred auth"),
+            None
+        );
+
+        switch_to_codex(&paths).expect("switch codex");
+        let codex = read_config(&paths).expect("codex config");
+        assert_eq!(
+            get_optional_string(&codex, "forced_login_method").expect("login method"),
+            Some("chatgpt".to_owned())
+        );
+        assert_eq!(
+            get_optional_string(&codex, "cli_auth_credentials_store").expect("credential store"),
+            Some("file".to_owned())
+        );
+    }
+
+    #[test]
+    fn removes_auth_overrides_written_by_legacy_switcher() {
+        let (_directory, paths) = fixture();
+        write_config(&paths, "model = \"gpt-5.4\"\n");
+        ensure_original_state(&paths, &read_config(&paths).expect("original config"))
+            .expect("capture original state");
+        write_config(
+            &paths,
+            r#"model = "deepseek-v4-flash"
+model_provider = "deepseek"
+preferred_auth_method = "apikey"
+forced_login_method = "api"
+cli_auth_credentials_store = "keyring"
+"#,
+        );
+
+        switch_to_deepseek(&paths, Path::new("/bin/switcher")).expect("migrate deepseek");
+        let migrated = read_config(&paths).expect("migrated config");
+        assert_eq!(
+            get_optional_string(&migrated, "preferred_auth_method").expect("preferred auth"),
+            None
+        );
+        assert_eq!(
+            get_optional_string(&migrated, "forced_login_method").expect("login method"),
+            None
+        );
+        assert_eq!(
+            get_optional_string(&migrated, "cli_auth_credentials_store").expect("credential store"),
+            Some("keyring".to_owned())
+        );
+
+        write_config(
+            &paths,
+            r#"model = "deepseek-v4-flash"
+model_provider = "deepseek"
+preferred_auth_method = "apikey"
+forced_login_method = "api"
+"#,
+        );
+        switch_to_codex(&paths).expect("migrate codex");
+        let restored = read_config(&paths).expect("restored config");
+        assert_eq!(
+            get_optional_string(&restored, "preferred_auth_method").expect("preferred auth"),
+            None
+        );
+        assert_eq!(
+            get_optional_string(&restored, "forced_login_method").expect("login method"),
+            None
+        );
+        assert_eq!(
+            get_optional_string(&restored, "model").expect("model"),
+            Some("gpt-5.4".to_owned())
+        );
     }
 
     #[test]

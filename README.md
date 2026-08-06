@@ -10,8 +10,7 @@ authentication and the operating system's credential store.
 
 ## Requirements
 
-- Codex CLI, ChatGPT desktop, or the Codex IDE extension initialized at least
-  once
+- Codex CLI or Codex desktop initialized at least once
 - Codex 0.144.0 or newer
 - A DeepSeek API key beginning with `sk-`
 - An available native credential store:
@@ -67,17 +66,15 @@ Install and run the switcher in the same environment where the Codex process
 runs. Windows and WSL are separate installations:
 
 - Native Windows uses the `.exe`, `%USERPROFILE%\.codex`, and Windows
-  Credential Manager. Use this when Codex or the IDE extension runs locally on
-  Windows.
-- A remote WSL workspace uses the Linux binary, the distro's `~/.codex`, and
-  Linux Secret Service over the WSL session D-Bus. The Codex extension must be
-  installed and running in the WSL extension host.
+  Credential Manager. Use this for Codex desktop and for Codex CLI launched
+  from Windows.
+- WSL uses the Linux binary, the distro's `~/.codex`, and Linux Secret Service
+  over the WSL session D-Bus. Use this for Codex CLI launched inside WSL.
 
-The Cursor window can run on the Windows desktop in both cases. What matters is
-whether the Codex extension/CLI process is local or attached to WSL. A Windows
+Codex desktop is a native application and does not run inside WSL. A Windows
 Codex process cannot execute the Linux credential-helper path, and a WSL Codex
-process cannot use Windows Credential Manager through the Linux keyring API.
-Run `setup` separately in both environments if you use both modes.
+CLI cannot use Windows Credential Manager through the Linux keyring API. Run
+`setup` separately in Windows and WSL if you use both.
 
 `codex-deepseek-switcher status` prints the detected runtime, Codex home, and
 credential backend. WSL requires a Secret Service provider such as GNOME
@@ -106,28 +103,28 @@ codex-deepseek-switcher key set
 codex-deepseek-switcher key delete
 ```
 
-Restart a running Codex, ChatGPT desktop, or IDE-extension session after a
-switch. Codex may show different session-history groups for OpenAI login and
-third-party API authentication; switching back makes the other group visible
-again.
+Restart a running Codex CLI or Codex desktop session after a switch. Codex may
+show different session-history groups for OpenAI login and third-party API
+authentication; switching back makes the other group visible again.
 
 ## What setup changes
 
 The switcher:
 
-- saves the original top-level provider, model, login, reasoning, and catalog
+- saves the original top-level provider, model, reasoning, and catalog
   selections
 - writes the DeepSeek V4 Flash metadata to `~/.codex/models.json`
 - adds `[model_providers.deepseek]` using the Responses API at
   `https://api.deepseek.com/`
 - configures `[model_providers.deepseek.auth]` to retrieve the key from this
   executable
-- sets `cli_auth_credentials_store = "keyring"` so Codex's own cached login
-  credentials use the OS keychain
+- leaves Codex's OpenAI login method and credential storage unchanged
 
 Unrelated configuration—including MCP servers and project trust—is preserved.
 `use codex` restores the exact selection captured before the first DeepSeek
 switch. The DeepSeek provider definition remains installed but inactive.
+Switching providers does not clear or replace the saved OpenAI login, so both
+providers remain usable without signing in again.
 
 Configuration writes use validated TOML/JSON, same-directory temporary files,
 and atomic replacement. Existing `config.toml` and `models.json` files are
