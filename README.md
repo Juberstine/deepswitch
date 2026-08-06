@@ -51,6 +51,28 @@ Keep the installed executable at a stable path. If it moves, run
 `codex-deepseek-switcher use deepseek` again so Codex's credential-helper path
 is updated.
 
+## Windows and WSL
+
+Install and run the switcher in the same environment where the Codex process
+runs. Windows and WSL are separate installations:
+
+- Native Windows uses the `.exe`, `%USERPROFILE%\.codex`, and Windows
+  Credential Manager. Use this when Codex or the IDE extension runs locally on
+  Windows.
+- A remote WSL workspace uses the Linux binary, the distro's `~/.codex`, and
+  Linux Secret Service over the WSL session D-Bus. The Codex extension must be
+  installed and running in the WSL extension host.
+
+The Cursor window can run on the Windows desktop in both cases. What matters is
+whether the Codex extension/CLI process is local or attached to WSL. A Windows
+Codex process cannot execute the Linux credential-helper path, and a WSL Codex
+process cannot use Windows Credential Manager through the Linux keyring API.
+Run `setup` separately in both environments if you use both modes.
+
+`codex-deepseek-switcher status` prints the detected runtime, Codex home, and
+credential backend. WSL requires a Secret Service provider such as GNOME
+Keyring or KeePassXC; it is not enabled by default in every distro.
+
 ## Use
 
 Initial setup securely prompts for the key and activates DeepSeek:
@@ -150,17 +172,17 @@ The release workflow builds all six platform archives on native GitHub-hosted
 runners. A manual workflow run builds and uploads temporary workflow artifacts
 without publishing a release, making it safe for testing.
 
-To publish, update the version in `Cargo.toml`, commit it, then push a matching
-tag:
+Every pull request must update the version in `Cargo.toml` and `Cargo.lock`.
+CI rejects a version that already has a GitHub release. When the pull request
+merges to `main`, the release workflow:
 
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
+1. builds and smoke-tests all six platform archives
+2. verifies that both Linux binaries are statically linked
+3. generates SHA-256 checksums and public-repository provenance attestations
+4. creates the matching `v<version>` tag and GitHub release
 
-For matching `v*` tags, GitHub Actions validates the tag against the Cargo
-package version, generates SHA-256 checksums, adds build-provenance attestations
-for public repositories, and creates the GitHub release with generated notes.
+The merge fails visibly at the release stage if its Cargo version was already
+published. Manual workflow runs never create tags or releases.
 
 ## License
 

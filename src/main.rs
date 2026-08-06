@@ -7,7 +7,7 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 use codex_deepseek_switcher::{
     config::{self, ChangeReport, CodexPaths},
-    credentials::{CredentialStore, NativeCredentialStore},
+    credentials::{CredentialStore, NativeCredentialStore, credential_backend_name, runtime_name},
     error::Result,
 };
 use secrecy::{ExposeSecret, SecretString};
@@ -115,6 +115,9 @@ fn run<S: CredentialStore>(cli: Cli, credentials: &S) -> Result<()> {
             } else {
                 "not set"
             };
+            println!("Runtime: {}", runtime_name());
+            println!("Codex home: {}", paths.home.display());
+            println!("Credential backend: {}", credential_backend_name());
             println!("Active provider: {}", status.provider);
             println!(
                 "Active model: {}",

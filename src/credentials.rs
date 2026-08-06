@@ -53,6 +53,45 @@ impl CredentialStore for NativeCredentialStore {
     }
 }
 
+pub fn credential_backend_name() -> &'static str {
+    #[cfg(target_os = "windows")]
+    return "Windows Credential Manager";
+
+    #[cfg(target_os = "macos")]
+    return "macOS Keychain";
+
+    #[cfg(target_os = "linux")]
+    return "Linux Secret Service";
+
+    #[allow(unreachable_code)]
+    "native OS credential store"
+}
+
+pub fn runtime_name() -> &'static str {
+    #[cfg(target_os = "windows")]
+    return "Windows";
+
+    #[cfg(target_os = "macos")]
+    return "macOS";
+
+    #[cfg(target_os = "linux")]
+    {
+        let distro_name_present = std::env::var_os("WSL_DISTRO_NAME").is_some();
+        let os_release = std::fs::read_to_string("/proc/sys/kernel/osrelease").ok();
+        let is_wsl = detect_wsl(distro_name_present, os_release.as_deref());
+        return if is_wsl { "WSL" } else { "Linux" };
+    }
+
+    #[allow(unreachable_code)]
+    "unknown"
+}
+
+#[cfg(target_os = "linux")]
+fn detect_wsl(distro_name_present: bool, os_release: Option<&str>) -> bool {
+    distro_name_present
+        || os_release.is_some_and(|release| release.to_ascii_lowercase().contains("microsoft"))
+}
+
 pub fn validate_api_key(api_key: &str) -> Result<()> {
     if api_key.is_empty() || api_key.trim() != api_key || !api_key.starts_with("sk-") {
         return Err(AppError::InvalidApiKey);
@@ -143,5 +182,13 @@ mod tests {
         assert!(store.delete().expect("delete key"));
         assert!(!store.delete().expect("delete missing key"));
         assert!(matches!(store.get(), Err(AppError::CredentialMissing)));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn detects_wsl_from_environment_or_kernel_release() {
+        assert!(detect_wsl(true, None));
+        assert!(detect_wsl(false, Some("6.6.87.2-microsoft-standard-WSL2")));
+        assert!(!detect_wsl(false, Some("6.8.0-generic")));
     }
 }
