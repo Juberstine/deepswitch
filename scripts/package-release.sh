@@ -6,7 +6,7 @@ asset_name="${2:?usage: package-release.sh TARGET ASSET_NAME [BINARY_SUFFIX]}"
 binary_suffix="${3:-}"
 
 project_root="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
-binary_path="$project_root/target/$target/release/codex-deepseek-switcher$binary_suffix"
+binary_path="$project_root/target/$target/release/deepswitch$binary_suffix"
 archive_path="$project_root/dist/$asset_name.tar.gz"
 staging_root="$(mktemp -d)"
 
@@ -26,7 +26,7 @@ cp "$binary_path" "$package_root/"
 cp "$project_root/README.md" "$project_root/LICENSE" "$package_root/"
 
 if [ -z "$binary_suffix" ]; then
-    chmod 755 "$package_root/codex-deepseek-switcher"
+    chmod 755 "$package_root/deepswitch"
 fi
 
 tar -czf "$archive_path" -C "$staging_root" "$asset_name"

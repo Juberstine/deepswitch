@@ -1,4 +1,4 @@
-# Secure Codex–DeepSeek Switcher
+# DeepSwitch
 
 A cross-platform CLI that switches the shared Codex configuration between your
 existing OpenAI/Codex setup and DeepSeek V4 Flash without storing the DeepSeek
@@ -8,10 +8,32 @@ The tool follows DeepSeek's Codex integration settings, but replaces the
 documented plaintext `experimental_bearer_token` with Codex's command-backed
 authentication and the operating system's credential store.
 
+## Why use this instead of the official setup script?
+
+DeepSeek's official [Codex integration](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/)
+and setup scripts write the API key directly to `config.toml` as
+`experimental_bearer_token`. They also set global API-login overrides, which
+can sign Codex out of an existing OpenAI session.
+
+This switcher improves that design by:
+
+- storing the DeepSeek key in the native OS credential store
+- using a hidden key prompt instead of echoing the key or requiring an
+  environment variable
+- supplying the key only through Codex's provider-specific credential command
+- preserving Codex's existing OpenAI login and credential-storage settings
+- sanitizing legacy plaintext tokens from generated configuration and backups
+- using private Unix permissions, validated configuration, atomic writes, and
+  comment-preserving TOML updates
+- testing Linux, macOS, Windows, switching behavior, release packaging, and
+  Homebrew installation in CI
+
+The official script currently supports DeepSeek V4 Flash and V4 Pro. This
+switcher currently supports V4 Flash only.
+
 ## Requirements
 
-- Codex CLI, ChatGPT desktop, or the Codex IDE extension initialized at least
-  once
+- Codex CLI or Codex desktop initialized at least once
 - Codex 0.144.0 or newer
 - A DeepSeek API key beginning with `sk-`
 - An available native credential store:
@@ -26,10 +48,20 @@ unavailable.
 
 ## Install
 
-Download the archive for your platform from
-[GitHub Releases](https://github.com/Juberstine/codex-deepseek-switcher/releases),
-extract it, and place `codex-deepseek-switcher` (or
-`codex-deepseek-switcher.exe`) on your `PATH`. Each release includes:
+On macOS or Linux, install from the
+[Homebrew tap](https://github.com/Juberstine/homebrew-tap):
+
+```sh
+brew install Juberstine/tap/deepswitch
+```
+
+Future releases are available through `brew update` and
+`brew upgrade deepswitch`.
+
+On any supported platform, you can instead download the archive from
+[GitHub Releases](https://github.com/Juberstine/deepswitch/releases), extract
+it, and place `deepswitch` (or `deepswitch.exe`) on your `PATH`. Each release
+includes:
 
 - static Linux binaries for x86-64 and ARM64
 - macOS binaries for Intel and Apple Silicon
@@ -48,8 +80,7 @@ cargo install --path .
 ```
 
 Keep the installed executable at a stable path. If it moves, run
-`codex-deepseek-switcher use deepseek` again so Codex's credential-helper path
-is updated.
+`deepswitch deepseek` again so Codex's credential-helper path is updated.
 
 ## Windows and WSL
 
@@ -57,67 +88,67 @@ Install and run the switcher in the same environment where the Codex process
 runs. Windows and WSL are separate installations:
 
 - Native Windows uses the `.exe`, `%USERPROFILE%\.codex`, and Windows
-  Credential Manager. Use this when Codex or the IDE extension runs locally on
-  Windows.
-- A remote WSL workspace uses the Linux binary, the distro's `~/.codex`, and
-  Linux Secret Service over the WSL session D-Bus. The Codex extension must be
-  installed and running in the WSL extension host.
+  Credential Manager. Use this for Codex desktop and for Codex CLI launched
+  from Windows.
+- WSL uses the Linux binary, the distro's `~/.codex`, and Linux Secret Service
+  over the WSL session D-Bus. Use this for Codex CLI launched inside WSL.
 
-The Cursor window can run on the Windows desktop in both cases. What matters is
-whether the Codex extension/CLI process is local or attached to WSL. A Windows
+Codex desktop is a native application and does not run inside WSL. A Windows
 Codex process cannot execute the Linux credential-helper path, and a WSL Codex
-process cannot use Windows Credential Manager through the Linux keyring API.
-Run `setup` separately in both environments if you use both modes.
+CLI cannot use Windows Credential Manager through the Linux keyring API. Run
+`setup` separately in Windows and WSL if you use both.
 
-`codex-deepseek-switcher status` prints the detected runtime, Codex home, and
-credential backend. WSL requires a Secret Service provider such as GNOME
-Keyring or KeePassXC; it is not enabled by default in every distro.
+`deepswitch status` prints the detected runtime, Codex home, and credential
+backend. WSL requires a Secret Service provider such as GNOME Keyring or
+KeePassXC; it is not enabled by default in every distro.
 
 ## Use
 
 Initial setup securely prompts for the key and activates DeepSeek:
 
 ```sh
-codex-deepseek-switcher setup
+deepswitch setup
 ```
 
 Switch providers and inspect the current state:
 
 ```sh
-codex-deepseek-switcher use codex
-codex-deepseek-switcher use deepseek
-codex-deepseek-switcher status
+deepswitch codex
+deepswitch deepseek
+deepswitch status
 ```
+
+Running `deepswitch` without a command prompts you to choose Codex or DeepSeek.
 
 Rotate or delete the DeepSeek key:
 
 ```sh
-codex-deepseek-switcher key set
-codex-deepseek-switcher key delete
+deepswitch key set
+deepswitch key delete
 ```
 
-Restart a running Codex, ChatGPT desktop, or IDE-extension session after a
-switch. Codex may show different session-history groups for OpenAI login and
-third-party API authentication; switching back makes the other group visible
-again.
+Restart a running Codex CLI or Codex desktop session after a switch. Codex may
+show different session-history groups for OpenAI login and third-party API
+authentication; switching back makes the other group visible again.
 
 ## What setup changes
 
 The switcher:
 
-- saves the original top-level provider, model, login, reasoning, and catalog
+- saves the original top-level provider, model, reasoning, and catalog
   selections
 - writes the DeepSeek V4 Flash metadata to `~/.codex/models.json`
 - adds `[model_providers.deepseek]` using the Responses API at
   `https://api.deepseek.com/`
 - configures `[model_providers.deepseek.auth]` to retrieve the key from this
   executable
-- sets `cli_auth_credentials_store = "keyring"` so Codex's own cached login
-  credentials use the OS keychain
+- leaves Codex's OpenAI login method and credential storage unchanged
 
 Unrelated configuration—including MCP servers and project trust—is preserved.
-`use codex` restores the exact selection captured before the first DeepSeek
+`deepswitch codex` restores the exact selection captured before the first DeepSeek
 switch. The DeepSeek provider definition remains installed but inactive.
+Switching providers does not clear or replace the saved OpenAI login, so both
+providers remain usable without signing in again.
 
 Configuration writes use validated TOML/JSON, same-directory temporary files,
 and atomic replacement. Existing `config.toml` and `models.json` files are
@@ -125,6 +156,9 @@ backed up under `~/.codex/deepseek-switcher/backups/` before changes. On Unix,
 state, backups, and generated files are restricted to the current user.
 Known plaintext `experimental_bearer_token` values are removed rather than
 copied into new configuration or backups.
+
+The state directory and credential-store identifier retain their original
+internal names so upgrades preserve existing keys and rollback data.
 
 If DeepSeek is already selected before the switcher has captured original
 state, setup stops and asks you to restore Codex manually first. This avoids
@@ -180,6 +214,10 @@ merges to `main`, the release workflow:
 2. verifies that both Linux binaries are statically linked
 3. generates SHA-256 checksums and public-repository provenance attestations
 4. creates the matching `v<version>` tag and GitHub release
+5. updates the macOS and Linux formula in `Juberstine/homebrew-tap`
+
+The tap update uses the repository secret `HOMEBREW_TAP_DEPLOY_KEY`, paired
+with a write-enabled deploy key scoped only to the tap repository.
 
 The merge fails visibly at the release stage if its Cargo version was already
 published. Manual workflow runs never create tags or releases.

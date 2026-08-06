@@ -21,37 +21,37 @@ jobs:
         include:
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-musl
-            asset_name: codex-deepseek-switcher-linux-x86_64
+            asset_name: deepswitch-linux-x86_64
             binary_suffix: ""
             rustflags: "-C target-feature=+crt-static"
             deployment_target: ""
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
-            asset_name: codex-deepseek-switcher-linux-aarch64
+            asset_name: deepswitch-linux-aarch64
             binary_suffix: ""
             rustflags: "-C target-feature=+crt-static"
             deployment_target: ""
           - runner: macos-15-intel
             target: x86_64-apple-darwin
-            asset_name: codex-deepseek-switcher-macos-x86_64
+            asset_name: deepswitch-macos-x86_64
             binary_suffix: ""
             rustflags: ""
             deployment_target: "10.15"
           - runner: macos-15
             target: aarch64-apple-darwin
-            asset_name: codex-deepseek-switcher-macos-aarch64
+            asset_name: deepswitch-macos-aarch64
             binary_suffix: ""
             rustflags: ""
             deployment_target: "11.0"
           - runner: windows-2025
             target: x86_64-pc-windows-msvc
-            asset_name: codex-deepseek-switcher-windows-x86_64
+            asset_name: deepswitch-windows-x86_64
             binary_suffix: ".exe"
             rustflags: "-C target-feature=+crt-static"
             deployment_target: ""
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
-            asset_name: codex-deepseek-switcher-windows-aarch64
+            asset_name: deepswitch-windows-aarch64
             binary_suffix: ".exe"
             rustflags: "-C target-feature=+crt-static"
             deployment_target: ""
@@ -74,13 +74,13 @@ jobs:
       - name: Smoke-test binary
         shell: bash
         run: |
-          binary="target/${{ matrix.target }}/release/codex-deepseek-switcher${{ matrix.binary_suffix }}"
+          binary="target/${{ matrix.target }}/release/deepswitch${{ matrix.binary_suffix }}"
           "$binary" --version
       - name: Verify static Linux linkage
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          binary="target/${{ matrix.target }}/release/codex-deepseek-switcher"
+          binary="target/${{ matrix.target }}/release/deepswitch"
           description="$(file "$binary")"
           case "$description" in
             *"statically linked"* | *"static-pie linked"*) ;;
@@ -142,9 +142,22 @@ jobs:
             exit 1
           fi
           echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "version=$package_version" >> "$GITHUB_OUTPUT"
       - name: Generate checksums
         working-directory: dist
         run: sha256sum ./*.tar.gz > SHA256SUMS
+      - name: Render Homebrew formula
+        run: >-
+          python3 scripts/render-homebrew-formula.py
+          --version "${{ steps.version.outputs.version }}"
+          --checksums dist/SHA256SUMS
+          --output dist/deepswitch.rb
+      - uses: actions/upload-artifact@v7
+        with:
+          name: homebrew-formula
+          path: dist/deepswitch.rb
+          if-no-files-found: error
+          retention-days: 14
       - name: Attest checksum manifest
         if: github.event.repository.visibility == 'public'
         uses: actions/attest@v4
@@ -160,3 +173,57 @@ jobs:
           --generate-notes
           dist/*.tar.gz
           dist/SHA256SUMS
+
+  update-homebrew:
+    name: Update Homebrew tap
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: homebrew-formula
+          path: dist
+      - name: Publish formula
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          if [[ -z "$DEPLOY_KEY" ]]; then
+            echo "HOMEBREW_TAP_DEPLOY_KEY is not configured" >&2
+            exit 1
+          fi
+
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/homebrew_tap"
+          chmod 600 "$HOME/.ssh/homebrew_tap"
+          unset DEPLOY_KEY
+          trap 'rm -f "$HOME/.ssh/homebrew_tap"' EXIT
+          printf '%s\n' \
+            'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+            > "$HOME/.ssh/known_hosts"
+
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/homebrew_tap -o IdentitiesOnly=yes"
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
+          git clone --depth 1 git@github.com:Juberstine/homebrew-tap.git "$tap_dir"
+          install -d "$tap_dir/Formula"
+          install -m 644 \
+            dist/deepswitch.rb \
+            "$tap_dir/Formula/deepswitch.rb"
+
+          cd "$tap_dir"
+          git rm --ignore-unmatch Formula/codex-deepseek-switcher.rb
+          if [[ -z "$(git status --porcelain -- Formula/deepswitch.rb Formula/codex-deepseek-switcher.rb)" ]]; then
+            echo "Homebrew formula is already current."
+            exit 0
+          fi
+
+          version="$(awk '/^  version / { gsub(/"/, "", $2); print $2 }' \
+            Formula/deepswitch.rb)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/deepswitch.rb
+          git commit -m "Update deepswitch to $version"
+          git push origin main
