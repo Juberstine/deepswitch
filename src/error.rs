@@ -12,6 +12,9 @@ pub enum AppError {
     #[error("CODEX_HOME must be a non-empty absolute path")]
     InvalidCodexHome,
 
+    #[error("could not locate the Windows desktop app Codex home: {0}")]
+    WindowsAppCodexHomeUnavailable(String),
+
     #[error("failed to read or write {path}: {source}")]
     Io {
         path: PathBuf,
