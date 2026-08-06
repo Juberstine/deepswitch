@@ -1,4 +1,4 @@
-# Secure Codex–DeepSeek Switcher
+# DeepSwitch
 
 A cross-platform CLI that switches the shared Codex configuration between your
 existing OpenAI/Codex setup and DeepSeek V4 Flash without storing the DeepSeek
@@ -52,16 +52,16 @@ On macOS or Linux, install from the
 [Homebrew tap](https://github.com/Juberstine/homebrew-tap):
 
 ```sh
-brew install Juberstine/tap/codex-deepseek-switcher
+brew install Juberstine/tap/deepswitch
 ```
 
 Future releases are available through `brew update` and
-`brew upgrade codex-deepseek-switcher`.
+`brew upgrade deepswitch`.
 
 On any supported platform, you can instead download the archive from
-[GitHub Releases](https://github.com/Juberstine/codex-deepseek-switcher/releases),
-extract it, and place `codex-deepseek-switcher` (or
-`codex-deepseek-switcher.exe`) on your `PATH`. Each release includes:
+[GitHub Releases](https://github.com/Juberstine/deepswitch/releases), extract
+it, and place `deepswitch` (or `deepswitch.exe`) on your `PATH`. Each release
+includes:
 
 - static Linux binaries for x86-64 and ARM64
 - macOS binaries for Intel and Apple Silicon
@@ -80,8 +80,7 @@ cargo install --path .
 ```
 
 Keep the installed executable at a stable path. If it moves, run
-`codex-deepseek-switcher use deepseek` again so Codex's credential-helper path
-is updated.
+`deepswitch deepseek` again so Codex's credential-helper path is updated.
 
 ## Windows and WSL
 
@@ -99,31 +98,33 @@ Codex process cannot execute the Linux credential-helper path, and a WSL Codex
 CLI cannot use Windows Credential Manager through the Linux keyring API. Run
 `setup` separately in Windows and WSL if you use both.
 
-`codex-deepseek-switcher status` prints the detected runtime, Codex home, and
-credential backend. WSL requires a Secret Service provider such as GNOME
-Keyring or KeePassXC; it is not enabled by default in every distro.
+`deepswitch status` prints the detected runtime, Codex home, and credential
+backend. WSL requires a Secret Service provider such as GNOME Keyring or
+KeePassXC; it is not enabled by default in every distro.
 
 ## Use
 
 Initial setup securely prompts for the key and activates DeepSeek:
 
 ```sh
-codex-deepseek-switcher setup
+deepswitch setup
 ```
 
 Switch providers and inspect the current state:
 
 ```sh
-codex-deepseek-switcher use codex
-codex-deepseek-switcher use deepseek
-codex-deepseek-switcher status
+deepswitch codex
+deepswitch deepseek
+deepswitch status
 ```
+
+Running `deepswitch` without a command prompts you to choose Codex or DeepSeek.
 
 Rotate or delete the DeepSeek key:
 
 ```sh
-codex-deepseek-switcher key set
-codex-deepseek-switcher key delete
+deepswitch key set
+deepswitch key delete
 ```
 
 Restart a running Codex CLI or Codex desktop session after a switch. Codex may
@@ -144,7 +145,7 @@ The switcher:
 - leaves Codex's OpenAI login method and credential storage unchanged
 
 Unrelated configuration—including MCP servers and project trust—is preserved.
-`use codex` restores the exact selection captured before the first DeepSeek
+`deepswitch codex` restores the exact selection captured before the first DeepSeek
 switch. The DeepSeek provider definition remains installed but inactive.
 Switching providers does not clear or replace the saved OpenAI login, so both
 providers remain usable without signing in again.
@@ -155,6 +156,9 @@ backed up under `~/.codex/deepseek-switcher/backups/` before changes. On Unix,
 state, backups, and generated files are restricted to the current user.
 Known plaintext `experimental_bearer_token` values are removed rather than
 copied into new configuration or backups.
+
+The state directory and credential-store identifier retain their original
+internal names so upgrades preserve existing keys and rollback data.
 
 If DeepSeek is already selected before the switcher has captured original
 state, setup stops and asks you to restore Codex manually first. This avoids

@@ -8,12 +8,12 @@ import re
 from pathlib import Path
 
 
-REPOSITORY = "Juberstine/codex-deepseek-switcher"
+REPOSITORY = "Juberstine/deepswitch"
 FORMULA_ASSETS = {
-    "linux_aarch64": "codex-deepseek-switcher-linux-aarch64.tar.gz",
-    "linux_x86_64": "codex-deepseek-switcher-linux-x86_64.tar.gz",
-    "macos_aarch64": "codex-deepseek-switcher-macos-aarch64.tar.gz",
-    "macos_x86_64": "codex-deepseek-switcher-macos-x86_64.tar.gz",
+    "linux_aarch64": "deepswitch-linux-aarch64.tar.gz",
+    "linux_x86_64": "deepswitch-linux-x86_64.tar.gz",
+    "macos_aarch64": "deepswitch-macos-aarch64.tar.gz",
+    "macos_x86_64": "deepswitch-macos-x86_64.tar.gz",
 }
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
@@ -53,7 +53,7 @@ def render_formula(version: str, checksums: dict[str, str]) -> str:
     }
     release_url = f"https://github.com/{REPOSITORY}/releases/download/v{version}"
 
-    return f'''class CodexDeepseekSwitcher < Formula
+    return f'''class Deepswitch < Formula
   desc "Safely switch Codex between OpenAI and DeepSeek"
   homepage "https://github.com/{REPOSITORY}"
   version "{version}"
@@ -80,11 +80,12 @@ def render_formula(version: str, checksums: dict[str, str]) -> str:
   end
 
   def install
-    bin.install "codex-deepseek-switcher"
+    bin.install "deepswitch"
+    bin.install_symlink "deepswitch" => "codex-deepseek-switcher"
   end
 
   test do
-    assert_match version.to_s, shell_output("#{{bin}}/codex-deepseek-switcher --version")
+    assert_match version.to_s, shell_output("#{{bin}}/deepswitch --version")
   end
 end
 '''

@@ -36,16 +36,17 @@ pub enum AppError {
     #[error("credential-store error: {0}")]
     CredentialStore(String),
 
-    #[error(
-        "the DeepSeek API key is not in the OS keychain; run `codex-deepseek-switcher key set`"
-    )]
+    #[error("the DeepSeek API key is not in the OS keychain; run `deepswitch key set`")]
     CredentialMissing,
 
     #[error("the API key must be non-empty and start with `sk-`")]
     InvalidApiKey,
 
+    #[error("no provider was selected; run `deepswitch codex` or `deepswitch deepseek`")]
+    InvalidProviderSelection,
+
     #[error(
-        "no saved Codex selection exists; run `codex-deepseek-switcher setup` or `use deepseek` first"
+        "no saved Codex selection exists; run `deepswitch setup` or `deepswitch deepseek` first"
     )]
     OriginalStateMissing,
 

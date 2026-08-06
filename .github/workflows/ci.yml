@@ -50,9 +50,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Build development image
-        run: docker build --file Dockerfile.dev --tag codex-deepseek-switcher-dev .
+        run: docker build --file Dockerfile.dev --tag deepswitch-dev .
       - name: Format, lint, and test
-        run: docker run --rm codex-deepseek-switcher-dev
+        run: docker run --rm deepswitch-dev
 
   homebrew-formula:
     name: Homebrew formula
@@ -65,10 +65,10 @@ jobs:
           mkdir -p dist Formula
           checksum=1
           for asset in \
-            codex-deepseek-switcher-linux-aarch64.tar.gz \
-            codex-deepseek-switcher-linux-x86_64.tar.gz \
-            codex-deepseek-switcher-macos-aarch64.tar.gz \
-            codex-deepseek-switcher-macos-x86_64.tar.gz
+            deepswitch-linux-aarch64.tar.gz \
+            deepswitch-linux-x86_64.tar.gz \
+            deepswitch-macos-aarch64.tar.gz \
+            deepswitch-macos-x86_64.tar.gz
           do
             printf '%064x  ./%s\n' "$checksum" "$asset"
             checksum=$((checksum + 1))
@@ -76,9 +76,9 @@ jobs:
           python3 scripts/render-homebrew-formula.py \
             --version 0.0.0 \
             --checksums dist/SHA256SUMS \
-            --output Formula/codex-deepseek-switcher.rb
-          ruby -c Formula/codex-deepseek-switcher.rb
-          brew style Formula/codex-deepseek-switcher.rb
+            --output Formula/deepswitch.rb
+          ruby -c Formula/deepswitch.rb
+          brew style Formula/deepswitch.rb
 
   native-build:
     name: Native build (${{ matrix.os }})

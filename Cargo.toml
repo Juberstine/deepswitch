@@ -1,12 +1,12 @@
 [package]
-name = "codex-deepseek-switcher"
+name = "deepswitch"
 version = "0.1.1"
 edition = "2024"
 rust-version = "1.88"
 description = "Safely switch Codex between OpenAI and DeepSeek"
 license = "MIT"
-repository = "https://github.com/Juberstine/codex-deepseek-switcher"
-homepage = "https://github.com/Juberstine/codex-deepseek-switcher"
+repository = "https://github.com/Juberstine/deepswitch"
+homepage = "https://github.com/Juberstine/deepswitch"
 readme = "README.md"
 keywords = ["codex", "deepseek", "cli", "keyring"]
 categories = ["command-line-utilities", "config"]

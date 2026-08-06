@@ -21,37 +21,37 @@ jobs:
         include:
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-musl
-            asset_name: codex-deepseek-switcher-linux-x86_64
+            asset_name: deepswitch-linux-x86_64
             binary_suffix: ""
             rustflags: "-C target-feature=+crt-static"
             deployment_target: ""
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
-            asset_name: codex-deepseek-switcher-linux-aarch64
+            asset_name: deepswitch-linux-aarch64
             binary_suffix: ""
             rustflags: "-C target-feature=+crt-static"
             deployment_target: ""
           - runner: macos-15-intel
             target: x86_64-apple-darwin
-            asset_name: codex-deepseek-switcher-macos-x86_64
+            asset_name: deepswitch-macos-x86_64
             binary_suffix: ""
             rustflags: ""
             deployment_target: "10.15"
           - runner: macos-15
             target: aarch64-apple-darwin
-            asset_name: codex-deepseek-switcher-macos-aarch64
+            asset_name: deepswitch-macos-aarch64
             binary_suffix: ""
             rustflags: ""
             deployment_target: "11.0"
           - runner: windows-2025
             target: x86_64-pc-windows-msvc
-            asset_name: codex-deepseek-switcher-windows-x86_64
+            asset_name: deepswitch-windows-x86_64
             binary_suffix: ".exe"
             rustflags: "-C target-feature=+crt-static"
             deployment_target: ""
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
-            asset_name: codex-deepseek-switcher-windows-aarch64
+            asset_name: deepswitch-windows-aarch64
             binary_suffix: ".exe"
             rustflags: "-C target-feature=+crt-static"
             deployment_target: ""
@@ -74,13 +74,13 @@ jobs:
       - name: Smoke-test binary
         shell: bash
         run: |
-          binary="target/${{ matrix.target }}/release/codex-deepseek-switcher${{ matrix.binary_suffix }}"
+          binary="target/${{ matrix.target }}/release/deepswitch${{ matrix.binary_suffix }}"
           "$binary" --version
       - name: Verify static Linux linkage
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          binary="target/${{ matrix.target }}/release/codex-deepseek-switcher"
+          binary="target/${{ matrix.target }}/release/deepswitch"
           description="$(file "$binary")"
           case "$description" in
             *"statically linked"* | *"static-pie linked"*) ;;
@@ -151,11 +151,11 @@ jobs:
           python3 scripts/render-homebrew-formula.py
           --version "${{ steps.version.outputs.version }}"
           --checksums dist/SHA256SUMS
-          --output dist/codex-deepseek-switcher.rb
+          --output dist/deepswitch.rb
       - uses: actions/upload-artifact@v7
         with:
           name: homebrew-formula
-          path: dist/codex-deepseek-switcher.rb
+          path: dist/deepswitch.rb
           if-no-files-found: error
           retention-days: 14
       - name: Attest checksum manifest
@@ -210,19 +210,20 @@ jobs:
           git clone --depth 1 git@github.com:Juberstine/homebrew-tap.git "$tap_dir"
           install -d "$tap_dir/Formula"
           install -m 644 \
-            dist/codex-deepseek-switcher.rb \
-            "$tap_dir/Formula/codex-deepseek-switcher.rb"
+            dist/deepswitch.rb \
+            "$tap_dir/Formula/deepswitch.rb"
 
           cd "$tap_dir"
-          if [[ -z "$(git status --porcelain -- Formula/codex-deepseek-switcher.rb)" ]]; then
+          git rm --ignore-unmatch Formula/codex-deepseek-switcher.rb
+          if [[ -z "$(git status --porcelain -- Formula/deepswitch.rb Formula/codex-deepseek-switcher.rb)" ]]; then
             echo "Homebrew formula is already current."
             exit 0
           fi
 
           version="$(awk '/^  version / { gsub(/"/, "", $2); print $2 }' \
-            Formula/codex-deepseek-switcher.rb)"
+            Formula/deepswitch.rb)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/codex-deepseek-switcher.rb
-          git commit -m "Update codex-deepseek-switcher to $version"
+          git add Formula/deepswitch.rb
+          git commit -m "Update deepswitch to $version"
           git push origin main

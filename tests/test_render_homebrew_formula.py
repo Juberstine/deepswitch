@@ -24,7 +24,7 @@ class ParseChecksumsTests(unittest.TestCase):
         checksums = formula.parse_checksums(checksum_manifest())
 
         self.assertEqual(
-            checksums["codex-deepseek-switcher-linux-aarch64.tar.gz"],
+            checksums["deepswitch-linux-aarch64.tar.gz"],
             f"{1:064x}",
         )
 
@@ -54,7 +54,7 @@ class RenderFormulaTests(unittest.TestCase):
                 rendered,
             )
         self.assertIn(
-            'shell_output("#{bin}/codex-deepseek-switcher --version")',
+                'shell_output("#{bin}/deepswitch --version")',
             rendered,
         )
 
