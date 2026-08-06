@@ -8,6 +8,29 @@ The tool follows DeepSeek's Codex integration settings, but replaces the
 documented plaintext `experimental_bearer_token` with Codex's command-backed
 authentication and the operating system's credential store.
 
+## Why use this instead of the official setup script?
+
+DeepSeek's official [Codex integration](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/)
+and setup scripts write the API key directly to `config.toml` as
+`experimental_bearer_token`. They also set global API-login overrides, which
+can sign Codex out of an existing OpenAI session.
+
+This switcher improves that design by:
+
+- storing the DeepSeek key in the native OS credential store
+- using a hidden key prompt instead of echoing the key or requiring an
+  environment variable
+- supplying the key only through Codex's provider-specific credential command
+- preserving Codex's existing OpenAI login and credential-storage settings
+- sanitizing legacy plaintext tokens from generated configuration and backups
+- using private Unix permissions, validated configuration, atomic writes, and
+  comment-preserving TOML updates
+- testing Linux, macOS, Windows, switching behavior, release packaging, and
+  Homebrew installation in CI
+
+The official script currently supports DeepSeek V4 Flash and V4 Pro. This
+switcher currently supports V4 Flash only.
+
 ## Requirements
 
 - Codex CLI or Codex desktop initialized at least once
