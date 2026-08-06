@@ -6,7 +6,7 @@ use std::{
 
 use clap::{Parser, Subcommand, ValueEnum};
 use deepswitch::{
-    config::{self, ChangeReport, CodexPaths},
+    config::{self, ChangeReport, CodexPaths, DeepSeekModel},
     credentials::{
         CredentialStore, NativeCredentialStore, credential_backend_name, is_wsl_runtime,
         runtime_name,
@@ -36,10 +36,18 @@ struct Installation {
 enum Command {
     /// Activate the saved OpenAI/Codex provider.
     Codex,
-    /// Activate DeepSeek V4 Flash.
-    Deepseek,
+    /// Activate DeepSeek V4 Flash or Pro.
+    Deepseek {
+        /// DeepSeek model to activate.
+        #[arg(value_enum, default_value_t = DeepSeekModelArg::Flash)]
+        model: DeepSeekModelArg,
+    },
     /// Store a DeepSeek key securely and activate DeepSeek.
-    Setup,
+    Setup {
+        /// DeepSeek model to activate after storing the key.
+        #[arg(value_enum, default_value_t = DeepSeekModelArg::Flash)]
+        model: DeepSeekModelArg,
+    },
     /// Activate the selected provider using the legacy syntax.
     #[command(hide = true)]
     Use {
@@ -67,6 +75,29 @@ enum Provider {
     Codex,
     /// Use DeepSeek V4 Flash through the Responses API.
     Deepseek,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum DeepSeekModelArg {
+    /// DeepSeek V4 Flash.
+    Flash,
+    /// DeepSeek V4 Pro.
+    Pro,
+}
+
+impl From<DeepSeekModelArg> for DeepSeekModel {
+    fn from(value: DeepSeekModelArg) -> Self {
+        match value {
+            DeepSeekModelArg::Flash => Self::Flash,
+            DeepSeekModelArg::Pro => Self::Pro,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Selection {
+    Codex,
+    Deepseek(DeepSeekModel),
 }
 
 #[derive(Debug, Subcommand)]
@@ -100,49 +131,32 @@ fn run<S: CredentialStore>(cli: Cli, credentials: &S) -> Result<()> {
         None => {
             let stdin = io::stdin();
             let stdout = io::stdout();
-            match prompt_for_provider(&mut stdin.lock(), &mut stdout.lock())? {
-                Provider::Codex => Command::Codex,
-                Provider::Deepseek => Command::Deepseek,
+            match prompt_for_selection(&mut stdin.lock(), &mut stdout.lock())? {
+                Selection::Codex => Command::Codex,
+                Selection::Deepseek(model) => Command::Deepseek {
+                    model: match model {
+                        DeepSeekModel::Flash => DeepSeekModelArg::Flash,
+                        DeepSeekModel::Pro => DeepSeekModelArg::Pro,
+                    },
+                },
             }
         }
     };
 
     match command {
-        Command::Setup => {
+        Command::Setup { model } => {
             if !credentials.contains_key()? {
                 set_key(credentials)?;
             }
-            let helper = current_executable()?;
-            let installations = discover_installations()?;
-            for installation in &installations {
-                let report = config::switch_to_deepseek(&installation.paths, &helper)?;
-                print_report(
-                    "DeepSeek is active.",
-                    &report,
-                    installation,
-                    installations.len(),
-                );
-            }
+            activate_deepseek(credentials, model.into())?;
         }
-        Command::Deepseek
-        | Command::Use {
+        Command::Deepseek { model } => {
+            activate_deepseek(credentials, model.into())?;
+        }
+        Command::Use {
             provider: Provider::Deepseek,
         } => {
-            credentials
-                .contains_key()?
-                .then_some(())
-                .ok_or(deepswitch::error::AppError::CredentialMissing)?;
-            let helper = current_executable()?;
-            let installations = discover_installations()?;
-            for installation in &installations {
-                let report = config::switch_to_deepseek(&installation.paths, &helper)?;
-                print_report(
-                    "DeepSeek is active.",
-                    &report,
-                    installation,
-                    installations.len(),
-                );
-            }
+            activate_deepseek(credentials, DeepSeekModel::Flash)?;
         }
         Command::Codex
         | Command::Use {
@@ -206,6 +220,21 @@ fn run<S: CredentialStore>(cli: Cli, credentials: &S) -> Result<()> {
                     source,
                 })?;
         }
+    }
+    Ok(())
+}
+
+fn activate_deepseek<S: CredentialStore>(credentials: &S, model: DeepSeekModel) -> Result<()> {
+    credentials
+        .contains_key()?
+        .then_some(())
+        .ok_or(deepswitch::error::AppError::CredentialMissing)?;
+    let helper = current_executable()?;
+    let installations = discover_installations()?;
+    let message = format!("{} is active.", model.label());
+    for installation in &installations {
+        let report = config::switch_to_deepseek(&installation.paths, &helper, model)?;
+        print_report(&message, &report, installation, installations.len());
     }
     Ok(())
 }
@@ -321,10 +350,11 @@ fn command_output(command: &mut ProcessCommand, name: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-fn prompt_for_provider<R: BufRead, W: Write>(input: &mut R, output: &mut W) -> Result<Provider> {
+fn prompt_for_selection<R: BufRead, W: Write>(input: &mut R, output: &mut W) -> Result<Selection> {
     writeln!(output, "Choose a provider:")
         .and_then(|()| writeln!(output, "  1) Codex"))
-        .and_then(|()| writeln!(output, "  2) DeepSeek"))
+        .and_then(|()| writeln!(output, "  2) DeepSeek V4 Flash"))
+        .and_then(|()| writeln!(output, "  3) DeepSeek V4 Pro"))
         .map_err(|source| AppError::Io {
             path: PathBuf::from("<stdout>"),
             source,
@@ -351,14 +381,21 @@ fn prompt_for_provider<R: BufRead, W: Write>(input: &mut R, output: &mut W) -> R
         }
 
         match selection.trim().to_ascii_lowercase().as_str() {
-            "1" | "codex" => return Ok(Provider::Codex),
-            "2" | "deepseek" => return Ok(Provider::Deepseek),
+            "1" | "codex" => return Ok(Selection::Codex),
+            "2" | "flash" | "deepseek" | "deepseek-v4-flash" => {
+                return Ok(Selection::Deepseek(DeepSeekModel::Flash));
+            }
+            "3" | "pro" | "deepseek-v4-pro" => {
+                return Ok(Selection::Deepseek(DeepSeekModel::Pro));
+            }
             _ => {
-                writeln!(output, "Enter 1 for Codex or 2 for DeepSeek.").map_err(|source| {
-                    AppError::Io {
-                        path: PathBuf::from("<stdout>"),
-                        source,
-                    }
+                writeln!(
+                    output,
+                    "Enter 1 for Codex, 2 for DeepSeek V4 Flash, or 3 for DeepSeek V4 Pro."
+                )
+                .map_err(|source| AppError::Io {
+                    path: PathBuf::from("<stdout>"),
+                    source,
                 })?;
             }
         }
@@ -426,8 +463,8 @@ mod tests {
         let mut output = Vec::new();
 
         assert_eq!(
-            prompt_for_provider(&mut input, &mut output).expect("provider"),
-            Provider::Codex
+            prompt_for_selection(&mut input, &mut output).expect("selection"),
+            Selection::Codex
         );
         assert!(
             String::from_utf8(output)
@@ -437,18 +474,29 @@ mod tests {
     }
 
     #[test]
-    fn prompt_retries_and_accepts_deepseek_by_name() {
+    fn prompt_retries_and_accepts_flash_by_name() {
         let mut input = &b"invalid\ndeepseek\n"[..];
         let mut output = Vec::new();
 
         assert_eq!(
-            prompt_for_provider(&mut input, &mut output).expect("provider"),
-            Provider::Deepseek
+            prompt_for_selection(&mut input, &mut output).expect("selection"),
+            Selection::Deepseek(DeepSeekModel::Flash)
         );
         assert!(
             String::from_utf8(output)
                 .expect("prompt")
-                .contains("Enter 1 for Codex or 2 for DeepSeek")
+                .contains("Enter 1 for Codex, 2 for DeepSeek V4 Flash, or 3 for DeepSeek V4 Pro.")
+        );
+    }
+
+    #[test]
+    fn prompt_accepts_pro_by_number() {
+        let mut input = &b"3\n"[..];
+        let mut output = Vec::new();
+
+        assert_eq!(
+            prompt_for_selection(&mut input, &mut output).expect("selection"),
+            Selection::Deepseek(DeepSeekModel::Pro)
         );
     }
 
@@ -458,7 +506,7 @@ mod tests {
         let mut output = Vec::new();
 
         assert!(matches!(
-            prompt_for_provider(&mut input, &mut output),
+            prompt_for_selection(&mut input, &mut output),
             Err(AppError::InvalidProviderSelection)
         ));
     }
