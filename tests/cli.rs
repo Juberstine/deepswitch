@@ -40,7 +40,8 @@ fn no_command_prompts_for_provider() {
         .failure()
         .stdout(predicate::str::contains("Choose a provider"))
         .stdout(predicate::str::contains("1) Codex"))
-        .stdout(predicate::str::contains("2) DeepSeek"))
+        .stdout(predicate::str::contains("2) DeepSeek V4 Flash"))
+        .stdout(predicate::str::contains("3) DeepSeek V4 Pro"))
         .stderr(predicate::str::contains("no saved Codex selection exists"));
 }
 

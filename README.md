@@ -1,8 +1,8 @@
 # DeepSwitch
 
 A cross-platform CLI that switches the shared Codex configuration between your
-existing OpenAI/Codex setup and DeepSeek V4 Flash without storing the DeepSeek
-API key in `config.toml`, an environment variable, or a shell profile.
+existing OpenAI/Codex setup and DeepSeek V4 Flash or V4 Pro without storing the
+DeepSeek API key in `config.toml`, an environment variable, or a shell profile.
 
 The tool follows DeepSeek's Codex integration settings, but replaces the
 documented plaintext `experimental_bearer_token` with Codex's command-backed
@@ -28,8 +28,9 @@ This switcher improves that design by:
 - testing Linux, macOS, Windows, switching behavior, release packaging, and
   Homebrew installation in CI
 
-The official script currently supports DeepSeek V4 Flash and V4 Pro. This
-switcher currently supports V4 Flash only.
+The official setup script and docs now support both `deepseek-v4-flash` and
+`deepseek-v4-pro`. This switcher writes the same catalog metadata, Responses API
+provider, and default reasoning effort, then lets you choose Flash or Pro.
 
 ## Requirements
 
@@ -122,10 +123,12 @@ KeePassXC; it is not enabled by default in every distro.
 
 ## Use
 
-Initial setup securely prompts for the key and activates DeepSeek:
+Initial setup securely prompts for the key and activates DeepSeek V4 Flash by
+default:
 
 ```sh
 deepswitch setup
+deepswitch setup pro
 ```
 
 Switch providers and inspect the current state:
@@ -133,10 +136,12 @@ Switch providers and inspect the current state:
 ```sh
 deepswitch codex
 deepswitch deepseek
+deepswitch deepseek pro
 deepswitch status
 ```
 
-Running `deepswitch` without a command prompts you to choose Codex or DeepSeek.
+Running `deepswitch` without a command prompts you to choose Codex, DeepSeek V4
+Flash, or DeepSeek V4 Pro.
 
 Rotate or delete the DeepSeek key:
 
@@ -155,7 +160,9 @@ The switcher:
 
 - saves the original top-level provider, model, reasoning, and catalog
   selections
-- writes the DeepSeek V4 Flash metadata to `~/.codex/models.json`
+- writes the official DeepSeek V4 Flash and V4 Pro catalog to `~/.codex/models.json`
+- sets the selected DeepSeek model (`deepseek-v4-flash` by default, or
+  `deepseek-v4-pro` when requested)
 - adds `[model_providers.deepseek]` using the Responses API at
   `https://api.deepseek.com/`
 - configures `[model_providers.deepseek.auth]` to retrieve the key from this

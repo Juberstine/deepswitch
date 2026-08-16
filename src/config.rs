@@ -15,11 +15,36 @@ use toml_edit::{DocumentMut, Item, Table, value};
 
 use crate::error::{AppError, Result, io_error};
 
-pub const DEEPSEEK_MODEL: &str = "deepseek-v4-flash";
+pub const DEEPSEEK_MODEL_FLASH: &str = "deepseek-v4-flash";
+pub const DEEPSEEK_MODEL_PRO: &str = "deepseek-v4-pro";
+const DEEPSEEK_MODELS: [&str; 2] = [DEEPSEEK_MODEL_FLASH, DEEPSEEK_MODEL_PRO];
 const DEEPSEEK_PROVIDER: &str = "deepseek";
 const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/";
 const STATE_VERSION: u8 = 1;
 const MODEL_CATALOG: &str = include_str!("../assets/deepseek-models.json");
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeepSeekModel {
+    Flash,
+    Pro,
+}
+
+impl DeepSeekModel {
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::Flash => DEEPSEEK_MODEL_FLASH,
+            Self::Pro => DEEPSEEK_MODEL_PRO,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Flash => "DeepSeek V4 Flash",
+            Self::Pro => "DeepSeek V4 Pro",
+        }
+    }
+}
+
 const MANAGED_SELECTION_FIELDS: [&str; 4] = [
     "model",
     "model_provider",
@@ -100,13 +125,17 @@ pub struct ConfigStatus {
     pub original_state_saved: bool,
 }
 
-pub fn switch_to_deepseek(paths: &CodexPaths, helper: &Path) -> Result<ChangeReport> {
+pub fn switch_to_deepseek(
+    paths: &CodexPaths,
+    helper: &Path,
+    model: DeepSeekModel,
+) -> Result<ChangeReport> {
     validate_embedded_catalog()?;
     let mut document = read_config(paths)?;
     ensure_original_state(paths, &document)?;
     restore_legacy_auth_overrides(&mut document, &read_state(paths)?, &paths.state)?;
 
-    set_string(&mut document, "model", DEEPSEEK_MODEL);
+    set_string(&mut document, "model", model.slug());
     set_string(&mut document, "model_provider", DEEPSEEK_PROVIDER);
     set_string(&mut document, "model_reasoning_effort", "high");
     set_string(
@@ -368,13 +397,15 @@ fn validate_embedded_catalog() -> Result<()> {
         .get("models")
         .and_then(JsonValue::as_array)
         .ok_or_else(|| AppError::InvalidEmbeddedCatalog("missing `models` array".to_owned()))?;
-    let has_flash = models
-        .iter()
-        .any(|model| model.get("slug").and_then(JsonValue::as_str) == Some(DEEPSEEK_MODEL));
-    if !has_flash {
-        return Err(AppError::InvalidEmbeddedCatalog(format!(
-            "missing model `{DEEPSEEK_MODEL}`"
-        )));
+    for expected in DEEPSEEK_MODELS {
+        let present = models
+            .iter()
+            .any(|model| model.get("slug").and_then(JsonValue::as_str) == Some(expected));
+        if !present {
+            return Err(AppError::InvalidEmbeddedCatalog(format!(
+                "missing model `{expected}`"
+            )));
+        }
     }
     Ok(())
 }
@@ -530,6 +561,40 @@ mod tests {
     }
 
     #[test]
+    fn embedded_catalog_matches_official_deepseek_models() {
+        validate_embedded_catalog().expect("catalog");
+        let catalog: JsonValue = serde_json::from_str(MODEL_CATALOG).expect("json");
+        let models = catalog["models"].as_array().expect("models");
+        let expected = [
+            (
+                DEEPSEEK_MODEL_FLASH,
+                "DeepSeek-V4-Flash",
+                "Latest frontier agentic coding model.",
+            ),
+            (
+                DEEPSEEK_MODEL_PRO,
+                "DeepSeek-V4-Pro",
+                "Most capable frontier agentic coding model.",
+            ),
+        ];
+        for (index, (slug, display_name, description)) in expected.into_iter().enumerate() {
+            let model = &models[index];
+            assert_eq!(model["slug"].as_str(), Some(slug));
+            assert_eq!(model["display_name"].as_str(), Some(display_name));
+            assert_eq!(model["description"].as_str(), Some(description));
+            assert_eq!(model["default_reasoning_level"].as_str(), Some("high"));
+            assert_eq!(model["context_window"].as_u64(), Some(1_048_576));
+            assert!(
+                model["base_instructions"]
+                    .as_str()
+                    .is_some_and(|text| text.starts_with(
+                        "You are Codex, an agent based on GPT-5. You and the user share one workspace"
+                    ))
+            );
+        }
+    }
+
+    #[test]
     fn switch_preserves_unrelated_config_and_restores_selection() {
         let (_directory, paths) = fixture();
         let original = r#"# keep this comment
@@ -543,7 +608,8 @@ command = "example"
         write_config(&paths, original);
 
         let report =
-            switch_to_deepseek(&paths, Path::new("/opt/bin/switcher")).expect("switch deepseek");
+            switch_to_deepseek(&paths, Path::new("/opt/bin/switcher"), DeepSeekModel::Flash)
+                .expect("switch deepseek");
         assert!(report.changed);
         let deepseek = fs::read_to_string(&paths.config).expect("deepseek config");
         assert!(deepseek.contains("# keep this comment"));
@@ -580,15 +646,34 @@ command = "example"
         write_config(&paths, "model = \"gpt-5.4\"\n");
 
         assert!(
-            switch_to_deepseek(&paths, Path::new("/bin/switcher"))
+            switch_to_deepseek(&paths, Path::new("/bin/switcher"), DeepSeekModel::Flash)
                 .expect("first switch")
                 .changed
         );
         assert!(
-            !switch_to_deepseek(&paths, Path::new("/bin/switcher"))
+            !switch_to_deepseek(&paths, Path::new("/bin/switcher"), DeepSeekModel::Flash)
                 .expect("second switch")
                 .changed
         );
+        assert!(
+            switch_to_deepseek(&paths, Path::new("/bin/switcher"), DeepSeekModel::Pro)
+                .expect("switch to pro")
+                .changed
+        );
+        let document = read_config(&paths).expect("pro config");
+        assert_eq!(
+            get_optional_string(&document, "model").expect("model"),
+            Some(DEEPSEEK_MODEL_PRO.to_owned())
+        );
+        assert!(paths.models.exists());
+        let catalog = fs::read_to_string(&paths.models).expect("models");
+        assert!(catalog.contains(DEEPSEEK_MODEL_FLASH));
+        assert!(catalog.contains(DEEPSEEK_MODEL_PRO));
+        assert!(catalog.contains("DeepSeek-V4-Flash"));
+        assert!(catalog.contains("DeepSeek-V4-Pro"));
+        assert!(catalog.contains(
+            "You are Codex, an agent based on GPT-5. You and the user share one workspace"
+        ));
         assert!(switch_to_codex(&paths).expect("first restore").changed);
         assert!(!switch_to_codex(&paths).expect("second restore").changed);
     }
@@ -604,7 +689,8 @@ cli_auth_credentials_store = "file"
 "#,
         );
 
-        switch_to_deepseek(&paths, Path::new("/bin/switcher")).expect("switch deepseek");
+        switch_to_deepseek(&paths, Path::new("/bin/switcher"), DeepSeekModel::Flash)
+            .expect("switch deepseek");
         let deepseek = read_config(&paths).expect("deepseek config");
         assert_eq!(
             get_optional_string(&deepseek, "forced_login_method").expect("login method"),
@@ -647,7 +733,8 @@ cli_auth_credentials_store = "keyring"
 "#,
         );
 
-        switch_to_deepseek(&paths, Path::new("/bin/switcher")).expect("migrate deepseek");
+        switch_to_deepseek(&paths, Path::new("/bin/switcher"), DeepSeekModel::Flash)
+            .expect("migrate deepseek");
         let migrated = read_config(&paths).expect("migrated config");
         assert_eq!(
             get_optional_string(&migrated, "preferred_auth_method").expect("preferred auth"),
@@ -692,7 +779,9 @@ forced_login_method = "api"
         let malformed = "model = [";
         write_config(&paths, malformed);
 
-        assert!(switch_to_deepseek(&paths, Path::new("/bin/switcher")).is_err());
+        assert!(
+            switch_to_deepseek(&paths, Path::new("/bin/switcher"), DeepSeekModel::Flash).is_err()
+        );
         assert_eq!(
             fs::read_to_string(&paths.config).expect("config"),
             malformed
@@ -707,8 +796,8 @@ forced_login_method = "api"
         write_config(&paths, "model = \"gpt-5.4\"\n");
         fs::write(&paths.models, "{\"old\":true}\n").expect("old models");
 
-        let report =
-            switch_to_deepseek(&paths, Path::new("/bin/switcher")).expect("switch deepseek");
+        let report = switch_to_deepseek(&paths, Path::new("/bin/switcher"), DeepSeekModel::Flash)
+            .expect("switch deepseek");
         let backup = report.backup.expect("backup path");
         assert_eq!(
             fs::read_to_string(backup.join("config.toml")).expect("config backup"),
@@ -737,8 +826,8 @@ request_max_retries = 8
             ),
         );
 
-        let report =
-            switch_to_deepseek(&paths, Path::new("/bin/switcher")).expect("switch deepseek");
+        let report = switch_to_deepseek(&paths, Path::new("/bin/switcher"), DeepSeekModel::Flash)
+            .expect("switch deepseek");
         let backup = report.backup.expect("backup path");
         for path in [
             paths.config.clone(),
@@ -764,7 +853,8 @@ request_max_retries = 8
 
         let (_directory, paths) = fixture();
         write_config(&paths, "model = \"gpt-5.4\"\n");
-        switch_to_deepseek(&paths, Path::new("/bin/switcher")).expect("switch deepseek");
+        switch_to_deepseek(&paths, Path::new("/bin/switcher"), DeepSeekModel::Flash)
+            .expect("switch deepseek");
 
         for path in [&paths.config, &paths.models, &paths.state] {
             let mode = fs::metadata(path).expect("metadata").permissions().mode() & 0o777;
@@ -778,7 +868,7 @@ request_max_retries = 8
         write_config(&paths, "model_provider = \"deepseek\"\n");
 
         assert!(matches!(
-            switch_to_deepseek(&paths, Path::new("/bin/switcher")),
+            switch_to_deepseek(&paths, Path::new("/bin/switcher"), DeepSeekModel::Flash),
             Err(AppError::DeepSeekSelectedWithoutState)
         ));
     }
@@ -794,7 +884,7 @@ request_max_retries = 8
         symlink(&target, &paths.config).expect("config symlink");
 
         assert!(matches!(
-            switch_to_deepseek(&paths, Path::new("/bin/switcher")),
+            switch_to_deepseek(&paths, Path::new("/bin/switcher"), DeepSeekModel::Flash),
             Err(AppError::SymbolicLink(path)) if path == paths.config
         ));
         assert_eq!(
