@@ -561,6 +561,40 @@ mod tests {
     }
 
     #[test]
+    fn embedded_catalog_matches_official_deepseek_models() {
+        validate_embedded_catalog().expect("catalog");
+        let catalog: JsonValue = serde_json::from_str(MODEL_CATALOG).expect("json");
+        let models = catalog["models"].as_array().expect("models");
+        let expected = [
+            (
+                DEEPSEEK_MODEL_FLASH,
+                "DeepSeek-V4-Flash",
+                "Latest frontier agentic coding model.",
+            ),
+            (
+                DEEPSEEK_MODEL_PRO,
+                "DeepSeek-V4-Pro",
+                "Most capable frontier agentic coding model.",
+            ),
+        ];
+        for (index, (slug, display_name, description)) in expected.into_iter().enumerate() {
+            let model = &models[index];
+            assert_eq!(model["slug"].as_str(), Some(slug));
+            assert_eq!(model["display_name"].as_str(), Some(display_name));
+            assert_eq!(model["description"].as_str(), Some(description));
+            assert_eq!(model["default_reasoning_level"].as_str(), Some("high"));
+            assert_eq!(model["context_window"].as_u64(), Some(1_048_576));
+            assert!(
+                model["base_instructions"]
+                    .as_str()
+                    .is_some_and(|text| text.starts_with(
+                        "You are Codex, an agent based on GPT-5. You and the user share one workspace"
+                    ))
+            );
+        }
+    }
+
+    #[test]
     fn switch_preserves_unrelated_config_and_restores_selection() {
         let (_directory, paths) = fixture();
         let original = r#"# keep this comment
@@ -635,6 +669,11 @@ command = "example"
         let catalog = fs::read_to_string(&paths.models).expect("models");
         assert!(catalog.contains(DEEPSEEK_MODEL_FLASH));
         assert!(catalog.contains(DEEPSEEK_MODEL_PRO));
+        assert!(catalog.contains("DeepSeek-V4-Flash"));
+        assert!(catalog.contains("DeepSeek-V4-Pro"));
+        assert!(catalog.contains(
+            "You are Codex, an agent based on GPT-5. You and the user share one workspace"
+        ));
         assert!(switch_to_codex(&paths).expect("first restore").changed);
         assert!(!switch_to_codex(&paths).expect("second restore").changed);
     }

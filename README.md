@@ -28,12 +28,9 @@ This switcher improves that design by:
 - testing Linux, macOS, Windows, switching behavior, release packaging, and
   Homebrew installation in CI
 
-The official setup script ships both `deepseek-v4-flash` and `deepseek-v4-pro`
-in `models.json` and shows Pro in its menu, but selecting Pro still exits with
-"not available yet" until DeepSeek enables Codex/Responses API support for Pro
-(docs currently say early August 2026). This switcher can configure either model
-the same way Flash is configured today; treat Pro activation as pending that
-upstream availability.
+The official setup script and docs now support both `deepseek-v4-flash` and
+`deepseek-v4-pro`. This switcher writes the same catalog metadata, Responses API
+provider, and default reasoning effort, then lets you choose Flash or Pro.
 
 ## Requirements
 
@@ -163,7 +160,7 @@ The switcher:
 
 - saves the original top-level provider, model, reasoning, and catalog
   selections
-- writes DeepSeek V4 Flash and V4 Pro metadata to `~/.codex/models.json`
+- writes the official DeepSeek V4 Flash and V4 Pro catalog to `~/.codex/models.json`
 - sets the selected DeepSeek model (`deepseek-v4-flash` by default, or
   `deepseek-v4-pro` when requested)
 - adds `[model_providers.deepseek]` using the Responses API at
